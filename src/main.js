@@ -5,12 +5,14 @@ import launcherIcon from './assets/launcher.svg';
 import sendIcon from './assets/send.svg';
 
 const WIDGET_ID = 'lam-chat-widget';
-const API_URL = 'https://chatapi.myriadsolutionz.com/api/chat';
-const STORAGE_PREFIX = 'lam-chat-widget:messages:';
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/chat';
 const DEFAULTS = {
   title: 'Lookatmedia™AIAssist',
   greeting: 'How may I help you?',
   placeholder: 'Ask a question...',
+  userId: 'default',
+  environment: 'dam',
+  apiUrl: API_URL,
 };
 
 function escapeHtml(value) {
@@ -175,6 +177,8 @@ function getScriptConfig(script) {
       placeholder: script.dataset.placeholder,
       apiUrl: script.dataset.apiUrl,
       clientId: script.dataset.clientId,
+      userId: script.dataset.userId,
+      environment: script.dataset.environment,
     }).filter(([, value]) => value !== undefined && value !== '')
   );
 }
@@ -185,21 +189,6 @@ function createWidget(config = {}) {
   }
 
   const settings = { ...DEFAULTS, ...config };
-  const storageKey = `${STORAGE_PREFIX}${settings.clientId || 'default'}`;
-  let messages = [];
-
-  try {
-    const storedMessages = JSON.parse(window.localStorage.getItem(storageKey) || '[]');
-    if (Array.isArray(storedMessages)) {
-      messages = storedMessages.filter((message) => (
-        message
-        && (message.type === 'assistant' || message.type === 'user')
-        && typeof message.text === 'string'
-      ));
-    }
-  } catch (error) {
-    console.warn('Chat widget localStorage is unavailable:', error);
-  }
   const title = escapeHtml(settings.title);
   const greeting = escapeHtml(settings.greeting);
   const placeholder = escapeHtml(settings.placeholder);
@@ -255,15 +244,7 @@ function createWidget(config = {}) {
     }
   };
 
-  const saveMessages = () => {
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify(messages));
-    } catch (error) {
-      console.warn('Chat widget could not save messages:', error);
-    }
-  };
-
-  const appendMessage = (text, type, shouldPersist = true) => {
+  const appendMessage = (text, type) => {
     const message = document.createElement('div');
     message.className = `message ${type}-message`;
 
@@ -285,18 +266,28 @@ function createWidget(config = {}) {
     message.append(content);
     conversation.append(message);
     conversation.scrollTop = conversation.scrollHeight;
-
-    if (shouldPersist) {
-      messages.push({ text, type });
-      saveMessages();
-    }
   };
 
-  if (messages.length) {
-    messages.forEach(({ text, type }) => appendMessage(text, type, false));
-  } else {
-    appendMessage(settings.greeting, 'assistant');
-  }
+  const appendAssistantStream = () => {
+    const message = document.createElement('div');
+    message.className = 'message assistant-message';
+
+    const icon = document.createElement('img');
+    icon.className = 'assistant-icon';
+    icon.src = assistantIcon;
+    icon.alt = '';
+    message.append(icon);
+
+    const content = document.createElement('div');
+    content.className = 'message-content';
+    content.innerHTML = renderMarkdown('');
+    message.append(content);
+    conversation.append(message);
+    conversation.scrollTop = conversation.scrollHeight;
+    return content;
+  };
+
+  appendMessage(settings.greeting, 'assistant');
 
   launcher.addEventListener('click', () => setOpen(panel.hidden));
   close.addEventListener('click', () => setOpen(false));
@@ -313,27 +304,129 @@ function createWidget(config = {}) {
     input.disabled = true;
     send.disabled = true;
 
+    const assistantContent = appendAssistantStream();
+    let streamedAnswer = '';
+    let finalized = false;
+
+    const finalizeAssistant = (text) => {
+      if (finalized) {
+        return;
+      }
+      finalized = true;
+      assistantContent.innerHTML = renderMarkdown(text);
+      conversation.scrollTop = conversation.scrollHeight;
+    };
+
     try {
       const response = await fetch(settings.apiUrl || API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
         },
-        body: JSON.stringify({ message: question }),
+        body: JSON.stringify({
+          user_id: settings.userId || settings.clientId || 'default',
+          environment: settings.environment || 'dam',
+          message: question,
+          profile: {
+            name: '',
+            role: '',
+            organization: '',
+          },
+        }),
       });
 
       if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(errorText || `API request failed with status ${response.status}`);
       }
 
-      const result = await response.json();
-      const answer = typeof result.response === 'string' && result.response.trim()
-        ? result.response
-        : 'I could not find a response for that question.';
-      appendMessage(answer, 'assistant');
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('The chat API response stream is not available.');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let eventName = 'message';
+      const dataLines = [];
+
+      const flushSseBlock = () => {
+        if (!dataLines.length) {
+          return;
+        }
+
+        const rawData = dataLines.join('\n').trim();
+        if (!rawData) {
+          return;
+        }
+
+        try {
+          const payload = JSON.parse(rawData);
+          if (eventName === 'error') {
+            throw new Error(payload?.message || 'Chat request failed');
+          }
+          if (payload && typeof payload.text === 'string' && payload.text.trim()) {
+            streamedAnswer += payload.text;
+            assistantContent.innerHTML = renderMarkdown(streamedAnswer);
+            conversation.scrollTop = conversation.scrollHeight;
+          }
+        } catch (error) {
+          console.error('Chat widget SSE parse error:', error);
+        }
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line) {
+            flushSseBlock();
+            eventName = 'message';
+            dataLines.length = 0;
+            continue;
+          }
+
+          if (line.startsWith('event:')) {
+            eventName = line.slice(6).trim();
+          } else if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5).trim());
+          }
+        }
+      }
+
+      const trailingLines = buffer.split(/\r?\n/);
+      for (const line of trailingLines) {
+        if (!line) {
+          flushSseBlock();
+          eventName = 'message';
+          dataLines.length = 0;
+          continue;
+        }
+
+        if (line.startsWith('event:')) {
+          eventName = line.slice(6).trim();
+        } else if (line.startsWith('data:')) {
+          dataLines.push(line.slice(5).trim());
+        }
+      }
+
+      flushSseBlock();
+
+      if (!streamedAnswer.trim()) {
+        streamedAnswer = 'I could not find a response for that question.';
+      }
+      finalizeAssistant(streamedAnswer);
     } catch (error) {
       console.error('Chat widget API error:', error);
-      appendMessage('Sorry, I could not connect right now. Please try again.', 'assistant');
+      finalizeAssistant('Sorry, I could not connect right now. Please try again.');
     } finally {
       input.disabled = false;
       send.disabled = false;
