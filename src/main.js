@@ -280,7 +280,10 @@ function createWidget(config = {}) {
 
     const content = document.createElement('div');
     content.className = 'message-content';
-    content.innerHTML = renderMarkdown('');
+    content.classList.add('thinking-indicator');
+    content.setAttribute('role', 'status');
+    content.setAttribute('aria-label', 'Assistant is thinking');
+    content.innerHTML = '<span></span><span></span><span></span>';
     message.append(content);
     conversation.append(message);
     conversation.scrollTop = conversation.scrollHeight;
@@ -307,14 +310,36 @@ function createWidget(config = {}) {
     const assistantContent = appendAssistantStream();
     let streamedAnswer = '';
     let finalized = false;
+    let pendingAnswerFrame = null;
+
+    const showAssistantAnswer = (text) => {
+      assistantContent.classList.remove('thinking-indicator');
+      assistantContent.removeAttribute('role');
+      assistantContent.removeAttribute('aria-label');
+      assistantContent.innerHTML = renderMarkdown(text);
+      conversation.scrollTop = conversation.scrollHeight;
+    };
+
+    const scheduleAssistantAnswer = () => {
+      if (pendingAnswerFrame !== null) {
+        return;
+      }
+      pendingAnswerFrame = window.requestAnimationFrame(() => {
+        pendingAnswerFrame = null;
+        showAssistantAnswer(streamedAnswer);
+      });
+    };
 
     const finalizeAssistant = (text) => {
       if (finalized) {
         return;
       }
       finalized = true;
-      assistantContent.innerHTML = renderMarkdown(text);
-      conversation.scrollTop = conversation.scrollHeight;
+      if (pendingAnswerFrame !== null) {
+        window.cancelAnimationFrame(pendingAnswerFrame);
+        pendingAnswerFrame = null;
+      }
+      showAssistantAnswer(text);
     };
 
     try {
@@ -368,8 +393,7 @@ function createWidget(config = {}) {
           }
           if (payload && typeof payload.text === 'string' && payload.text.trim()) {
             streamedAnswer += payload.text;
-            assistantContent.innerHTML = renderMarkdown(streamedAnswer);
-            conversation.scrollTop = conversation.scrollHeight;
+            scheduleAssistantAnswer();
           }
         } catch (error) {
           console.error('Chat widget SSE parse error:', error);

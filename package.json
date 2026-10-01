@@ -11,8 +11,5 @@
   },
   "devDependencies": {
     "vite": "^5.4.21"
-  },
-  "dependencies": {
-    "@rolldown/binding-win32-x64-msvc": "^1.2.12"
   }
 }
