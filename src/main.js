@@ -10,7 +10,7 @@ const DEFAULTS = {
   title: 'Lookatmedia™AIAssist',
   greeting: 'How may I help you?',
   placeholder: 'Ask a question...',
-  userId: 'default',
+  userId: '',
   environment: 'dam',
   apiUrl: API_URL,
 };
@@ -183,12 +183,35 @@ function getScriptConfig(script) {
   );
 }
 
+function getOrCreateVisitorId(clientId) {
+  const storageKey = `lam-chat-widget:user-id:${clientId || 'default'}`;
+
+  try {
+    const storedId = window.localStorage.getItem(storageKey);
+    if (storedId) {
+      return storedId;
+    }
+  } catch {
+    return window.crypto.randomUUID();
+  }
+
+  const visitorId = window.crypto.randomUUID();
+  try {
+    window.localStorage.setItem(storageKey, visitorId);
+  } catch {
+    return visitorId;
+  }
+  return visitorId;
+}
+
 function createWidget(config = {}) {
   if (document.getElementById(WIDGET_ID)) {
     return;
   }
 
   const settings = { ...DEFAULTS, ...config };
+  const visitorId = settings.userId || getOrCreateVisitorId(settings.clientId);
+  const userId = `${settings.clientId || 'default'}:${visitorId}`;
   const title = escapeHtml(settings.title);
   const greeting = escapeHtml(settings.greeting);
   const placeholder = escapeHtml(settings.placeholder);
@@ -350,7 +373,7 @@ function createWidget(config = {}) {
           'Accept': 'text/event-stream',
         },
         body: JSON.stringify({
-          user_id: settings.userId || settings.clientId || 'default',
+          user_id: userId,
           environment: settings.environment || 'dam',
           message: question,
           profile: {
