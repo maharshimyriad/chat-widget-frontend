@@ -7,7 +7,7 @@ import sendIcon from './assets/send.svg';
 const WIDGET_ID = 'lam-chat-widget';
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/chat';
 const DEFAULTS = {
-  title: 'Ask Eponymos',
+  title: 'Ask Eponymos™',
   greeting: 'How may I help you?',
   placeholder: 'Ask a question...',
   userId: '',
