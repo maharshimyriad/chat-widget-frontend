@@ -41,9 +41,10 @@ Send two messages on a page and check the `chat` requests in DevTools → Networ
 
 For the complete integration steps and required script attributes, see
 [EMBED_INTEGRATION.md](./EMBED_INTEGRATION.md). The backend must allow the host
-website's exact origin in `CORS_ALLOWED_ORIGINS`. Set `data-user-id` to the stable
-logged-in user ID when available. The widget prefixes it with `data-client-id`;
-otherwise it creates a stable browser-scoped ID.
+The API allows public widget requests from any origin without cookies, so adding
+a new embedding website does not require a backend CORS change. Set
+`data-user-id` to the stable logged-in user ID. The widget prefixes it with
+`data-client-id`; otherwise it creates a stable browser-scoped ID.
 
 ## Deployment notes
 
