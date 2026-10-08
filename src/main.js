@@ -459,8 +459,13 @@ function createWidget(config = {}) {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || `API request failed with status ${response.status}`);
+        const errorPayload = await response.json().catch(() => null);
+        const responseMessage = errorPayload?.detail || errorPayload?.message;
+        if (response.status === 403 && typeof responseMessage === 'string') {
+          finalizeAssistant(responseMessage);
+          return;
+        }
+        throw new Error(responseMessage || `API request failed with status ${response.status}`);
       }
 
       const reader = response.body?.getReader();
