@@ -1,4 +1,18 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap');
+@font-face {
+  font-family: 'Poppins';
+  src: url('./assets/fonts/Poppins-Regular.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Poppins';
+  src: url('./assets/fonts/Poppins-SemiBold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
 
 :host {
   --chat-gradient: linear-gradient(90deg, #5F8991 0%, #8183B2 100%);
@@ -33,6 +47,7 @@ button {
 }
 
 .launcher {
+  font-family: 'Poppins', 'Segoe UI', sans-serif;
   position: fixed;
   z-index: 2147483646;
   right: 24px;
@@ -68,6 +83,7 @@ input:focus-visible {
 }
 
 .panel {
+  font-family: 'Poppins', 'Segoe UI', sans-serif;
   position: fixed;
   z-index: 2147483645;
   right: 24px;
@@ -96,7 +112,7 @@ input:focus-visible {
 
 .header {
   display: flex;
-  padding: 6px 20px 12px;
+  padding: 6px 10px 12px;
   align-items: center;
   justify-content: space-between;
   color: #FFFFFF;
