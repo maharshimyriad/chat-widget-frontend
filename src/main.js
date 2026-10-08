@@ -7,7 +7,7 @@ import sendIcon from './assets/send.svg';
 const WIDGET_ID = 'lam-chat-widget';
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/chat';
 const DEFAULTS = {
-  title: 'Lookatmedia™AIAssist',
+  title: 'Ask Eponymos',
   greeting: 'How may I help you?',
   placeholder: 'Ask a question...',
   userId: '',
@@ -204,14 +204,43 @@ function getOrCreateVisitorId(clientId) {
   return visitorId;
 }
 
+function loadSessionId(storageKey) {
+  try {
+    return window.localStorage.getItem(storageKey) || '';
+  } catch {
+    return '';
+  }
+}
+
+function saveSessionId(storageKey, sessionId) {
+  try {
+    window.localStorage.setItem(storageKey, sessionId);
+  } catch {
+    // The active page can still continue the conversation in memory.
+  }
+}
+
+function clearSessionId(storageKey) {
+  try {
+    window.localStorage.removeItem(storageKey);
+  } catch {
+    // Starting a new conversation still works for the active page.
+  }
+}
+
 function createWidget(config = {}) {
   if (document.getElementById(WIDGET_ID)) {
     return;
   }
 
   const settings = { ...DEFAULTS, ...config };
-  const visitorId = settings.userId || getOrCreateVisitorId(settings.clientId);
-  const userId = `${settings.clientId || 'default'}:${visitorId}`;
+  const clientId = settings.clientId || 'default';
+  const environment = settings.environment || 'dam';
+  const visitorId = settings.userId || getOrCreateVisitorId(clientId);
+  const userId = `${clientId}:${visitorId}`;
+  const apiBaseUrl = (settings.apiUrl || API_URL).replace(/\/chat\/?$/, '');
+  const sessionStorageKey = `lam-chat-widget:session:${encodeURIComponent(userId)}:${encodeURIComponent(environment)}`;
+  let sessionId = loadSessionId(sessionStorageKey);
   const title = escapeHtml(settings.title);
   const greeting = escapeHtml(settings.greeting);
   const placeholder = escapeHtml(settings.placeholder);
@@ -229,9 +258,12 @@ function createWidget(config = {}) {
     <section class="panel" aria-label="${title}" hidden>
       <header class="header">
         <h1>${title}</h1>
-        <button class="close" type="button" aria-label="Close chat">
-          <img src="${closeIcon}" alt="" />
-        </button>
+        <div class="header-actions">
+          <button class="new-conversation" type="button">New conversation</button>
+          <button class="close" type="button" aria-label="Close chat" title="Close chat">
+            <img src="${closeIcon}" alt="" />
+          </button>
+        </div>
       </header>
       <div class="chat-shell">
         <div class="conversation" role="log" aria-live="polite" aria-label="Conversation">
@@ -249,11 +281,15 @@ function createWidget(config = {}) {
 
   const launcher = shadowRoot.querySelector('.launcher');
   const close = shadowRoot.querySelector('.close');
+  const newConversation = shadowRoot.querySelector('.new-conversation');
   const panel = shadowRoot.querySelector('.panel');
   const conversation = shadowRoot.querySelector('.conversation');
   const composer = shadowRoot.querySelector('.composer');
   const input = shadowRoot.querySelector('#chat-question');
   const send = shadowRoot.querySelector('.send');
+  input.disabled = true;
+  send.disabled = true;
+  newConversation.disabled = true;
 
   const setOpen = (isOpen) => {
     panel.hidden = !isOpen;
@@ -313,10 +349,51 @@ function createWidget(config = {}) {
     return content;
   };
 
-  appendMessage(settings.greeting, 'assistant');
+  const restoreConversation = async () => {
+    let restored = false;
+    if (sessionId) {
+      const query = new URLSearchParams({ user_id: userId, environment_id: environment, session_id: sessionId });
+      try {
+        const response = await fetch(`${apiBaseUrl}/history?${query}`);
+        if (!response.ok) {
+          throw new Error(`History request failed with status ${response.status}`);
+        }
+        const result = await response.json();
+        const messages = Array.isArray(result.messages) ? result.messages : [];
+        if (messages.length) {
+          conversation.replaceChildren();
+          messages.forEach(({ content, role }) => {
+            if ((role === 'assistant' || role === 'user') && typeof content === 'string') {
+              appendMessage(content, role);
+            }
+          });
+          restored = conversation.childElementCount > 0;
+        }
+      } catch (error) {
+        console.error('Chat widget history error:', error);
+      }
+    }
+    if (!restored) {
+      appendMessage(settings.greeting, 'assistant');
+    }
+    input.disabled = false;
+    send.disabled = false;
+    newConversation.disabled = false;
+  };
+
+  void restoreConversation();
 
   launcher.addEventListener('click', () => setOpen(panel.hidden));
   close.addEventListener('click', () => setOpen(false));
+  newConversation.addEventListener('click', () => {
+    if (input.disabled) {
+      return;
+    }
+    sessionId = '';
+    clearSessionId(sessionStorageKey);
+    conversation.replaceChildren();
+    appendMessage(settings.greeting, 'assistant');
+  });
   composer.addEventListener('submit', async (event) => {
     event.preventDefault();
     const question = input.value.trim();
@@ -329,6 +406,7 @@ function createWidget(config = {}) {
     input.value = '';
     input.disabled = true;
     send.disabled = true;
+    newConversation.disabled = true;
 
     const assistantContent = appendAssistantStream();
     let streamedAnswer = '';
@@ -374,13 +452,9 @@ function createWidget(config = {}) {
         },
         body: JSON.stringify({
           user_id: userId,
-          environment: settings.environment || 'dam',
+          environment_id: environment,
           message: question,
-          profile: {
-            name: '',
-            role: '',
-            organization: '',
-          },
+          session_id: sessionId || null,
         }),
       });
 
@@ -398,28 +472,29 @@ function createWidget(config = {}) {
       let buffer = '';
       let eventName = 'message';
       const dataLines = [];
+      let doneReceived = false;
 
       const flushSseBlock = () => {
         if (!dataLines.length) {
           return;
         }
 
-        const rawData = dataLines.join('\n').trim();
-        if (!rawData) {
+        const rawData = dataLines.join('\n');
+        if (!rawData.trim()) {
           return;
         }
 
-        try {
-          const payload = JSON.parse(rawData);
-          if (eventName === 'error') {
-            throw new Error(payload?.message || 'Chat request failed');
-          }
-          if (payload && typeof payload.text === 'string' && payload.text.trim()) {
-            streamedAnswer += payload.text;
-            scheduleAssistantAnswer();
-          }
-        } catch (error) {
-          console.error('Chat widget SSE parse error:', error);
+        const payload = JSON.parse(rawData);
+        if (eventName === 'session' && typeof payload.session_id === 'string' && payload.session_id) {
+          sessionId = payload.session_id;
+          saveSessionId(sessionStorageKey, sessionId);
+        } else if (eventName === 'message' && typeof payload.text === 'string') {
+          streamedAnswer += payload.text;
+          scheduleAssistantAnswer();
+        } else if (eventName === 'error') {
+          throw new Error(payload.message || 'Chat request failed');
+        } else if (eventName === 'done') {
+          doneReceived = true;
         }
       };
 
@@ -438,17 +513,25 @@ function createWidget(config = {}) {
             flushSseBlock();
             eventName = 'message';
             dataLines.length = 0;
+            if (doneReceived) {
+              await reader.cancel();
+              break;
+            }
             continue;
           }
 
           if (line.startsWith('event:')) {
             eventName = line.slice(6).trim();
           } else if (line.startsWith('data:')) {
-            dataLines.push(line.slice(5).trim());
+            dataLines.push(line.slice(5).replace(/^ /, ''));
           }
+        }
+        if (doneReceived) {
+          break;
         }
       }
 
+      buffer += decoder.decode();
       const trailingLines = buffer.split(/\r?\n/);
       for (const line of trailingLines) {
         if (!line) {
@@ -461,7 +544,7 @@ function createWidget(config = {}) {
         if (line.startsWith('event:')) {
           eventName = line.slice(6).trim();
         } else if (line.startsWith('data:')) {
-          dataLines.push(line.slice(5).trim());
+          dataLines.push(line.slice(5).replace(/^ /, ''));
         }
       }
 
@@ -477,6 +560,7 @@ function createWidget(config = {}) {
     } finally {
       input.disabled = false;
       send.disabled = false;
+      newConversation.disabled = false;
       input.focus();
     }
   });

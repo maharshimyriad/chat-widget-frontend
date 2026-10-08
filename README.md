@@ -1,6 +1,6 @@
 # Lookatmedia AI Assist Widget
 
-Embeddable chat widget built with vanilla JavaScript and Vite. It runs in a Shadow DOM, sends requests to the FastAPI backend, and renders the backend's SSE response. It shows an animated three-dot indicator while waiting and batches text rendering to browser animation frames. It does not persist the visible transcript in `localStorage`.
+Embeddable chat widget built with vanilla JavaScript and Vite. It runs in a Shadow DOM, sends `{ user_id, environment_id, message, session_id }` requests to the FastAPI `/chat` endpoint, and consumes JSON SSE events. The widget stores the Agent Engine session ID in `localStorage`; on refresh it restores visible messages through the backend's Agent Engine history endpoint. No transcript copy is stored by the backend.
 
 ## Requirements
 
@@ -15,7 +15,7 @@ Run these commands from this directory after reconciling the lockfile:
 
 ```bash
 npm ci
-VITE_API_URL=https://api.your-domain.com/api/chat npm run build:embed
+VITE_API_URL=https://api.your-domain.com/chat npm run build:embed
 test -s dist/embed/lam-chat-widget.js && echo "Widget build succeeded"
 ```
 
@@ -27,15 +27,23 @@ For a local development preview, configure `VITE_API_URL` in `.env` and run:
 npm run dev -- --host 127.0.0.1
 ```
 
+### Test supported environments in the browser
+
+With the backend running at `http://127.0.0.1:8000` and the frontend dev server running, open the page URLs printed by Vite:
+
+- `/demo-one.html` tests `dam`.
+- `/demo-two.html` tests `eponymos`.
+- `/demo-three.html` tests `media_center`.
+
+Send two messages on a page and check the `chat` requests in DevTools → Network. The second request should contain the same `session_id` received in the first response's `session` event. Each environment gets its own local session ID while all three use the shared deployed agent resource.
+
 ## Embed
 
-Add the hosted script to the host website:
-
-```html
-<script src="https://widgets.your-domain.com/lam-chat-widget.js"></script>
-```
-
-Optional script attributes include `data-title`, `data-greeting`, `data-placeholder`, `data-api-url`, `data-client-id`, `data-user-id`, and `data-environment`. The backend must allow the host website's exact origin in `CORS_ALLOWED_ORIGINS`.
+For the complete integration steps and required script attributes, see
+[EMBED_INTEGRATION.md](./EMBED_INTEGRATION.md). The backend must allow the host
+website's exact origin in `CORS_ALLOWED_ORIGINS`. Set `data-user-id` to the stable
+logged-in user ID when available. The widget prefixes it with `data-client-id`;
+otherwise it creates a stable browser-scoped ID.
 
 ## Deployment notes
 
