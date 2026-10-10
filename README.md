@@ -43,9 +43,9 @@ For the complete integration steps and required script attributes, see
 [EMBED_INTEGRATION.md](./EMBED_INTEGRATION.md). Set `CORS_ALLOWED_ORIGINS=*`
 to accept chat requests from any origin, or configure a comma-separated list of
 exact origins. Other browser sites receive a visible authorization error. CORS
-does not authenticate API callers. Set `data-user-id` to the stable logged-in
-user ID. The widget prefixes it with `data-client-id`; otherwise it creates a
-stable browser-scoped ID.
+does not authenticate API callers. Set `data-user-id` to the stable global ID
+of the signed-in person; the widget sends it unchanged. If omitted, it creates
+a stable browser-scoped fallback ID.
 
 ## Deployment notes
 

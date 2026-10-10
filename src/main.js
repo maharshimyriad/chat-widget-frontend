@@ -176,15 +176,14 @@ function getScriptConfig(script) {
       greeting: script.dataset.greeting,
       placeholder: script.dataset.placeholder,
       apiUrl: script.dataset.apiUrl,
-      clientId: script.dataset.clientId,
       userId: script.dataset.userId,
       environment: script.dataset.environment,
     }).filter(([, value]) => value !== undefined && value !== '')
   );
 }
 
-function getOrCreateVisitorId(clientId) {
-  const storageKey = `lam-chat-widget:user-id:${clientId || 'default'}`;
+function getOrCreateVisitorId() {
+  const storageKey = 'lam-chat-widget:user-id';
 
   try {
     const storedId = window.localStorage.getItem(storageKey);
@@ -234,10 +233,8 @@ function createWidget(config = {}) {
   }
 
   const settings = { ...DEFAULTS, ...config };
-  const clientId = settings.clientId || 'default';
   const environment = settings.environment || 'dam';
-  const visitorId = settings.userId || getOrCreateVisitorId(clientId);
-  const userId = `${clientId}:${visitorId}`;
+  const userId = settings.userId || getOrCreateVisitorId();
   const apiBaseUrl = (settings.apiUrl || API_URL).replace(/\/chat\/?$/, '');
   const sessionStorageKey = `lam-chat-widget:session:${encodeURIComponent(userId)}:${encodeURIComponent(environment)}`;
   let sessionId = loadSessionId(sessionStorageKey);

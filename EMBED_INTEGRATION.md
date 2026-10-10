@@ -1,36 +1,30 @@
 # Add the chat widget to your website
 
-Add this script tag to
-the website page, just before `</body>`:
+Add this script tag to the website page, just before `</body>`:
 
 ```html
 <script
   src="https://chatwidget.lookm.org/lam-chat-widget.js"
-  data-title="Eponymos Assistant"
+  data-title="Ask Eponymos™"
   data-greeting="Hello! How can I help you?"
   data-placeholder="Type your question..."
-  data-client-id="eponymos"
+  data-user-id="GLOBAL_STABLE_USER_ID"
   data-environment="eponymos"
 ></script>
 ```
 
-The `src` is the deployed widget
-script and should not be changed by the site integrator.
-
+Replace `GLOBAL_STABLE_USER_ID` with the signed-in person's stable ID. Pass the
+same ID for that person on every platform and page load; the widget sends it
+unchanged as `user_id` to Agent Engine. Do not include an email address or an ID
+that changes between sessions. If the visitor is signed out, do not render the
+widget script.
 ## Supported data attributes
 
 | Attribute | What it does | Example |
 | --- | --- | --- |
-| `data-title` | Title shown in the chat panel. | `data-title="Eponymos Assistant"` |
-| `data-greeting` | Initial assistant message when there is no saved history. | `data-greeting="Hello! How can I help you?"` |
-| `data-placeholder` | Placeholder in the message input. | `data-placeholder="Type your question..."` |
-| `data-client-id` | Stable site/widget identifier. Different values keep site conversations separate. | `data-client-id="eponymos"` |
-| `data-user-id` | Stable ID of the logged-in person. The widget prefixes it with the client ID. | `data-user-id="user-123"` |
-| `data-environment` | Product environment sent with chat requests: `dam`, `eponymos`, or `media_center`. | `data-environment="eponymos"` |
-
-If `data-title`, `data-greeting`, or `data-placeholder` are omitted, the
-widget uses its built-in display defaults.
-
-The widget stores each Agent Engine `session_id` in browser `localStorage`, keyed
-by user and environment. A new conversation clears that local ID; Agent Engine
-remains the source of truth for the previous session and its history.
+| `data-title` | Optional title override. Defaults to `Ask Eponymos™`. | `data-title="Eponymos Support"` |
+| `data-greeting` | Initial assistant message when there is no saved history. Defaults to `How may I help you?`. | `data-greeting="Hello! How can I help you?"` |
+| `data-placeholder` | Message input placeholder. Defaults to `Ask a question...`. | `data-placeholder="Type your question..."` |
+| `data-user-id` | Stable global ID of the signed-in person. The widget sends it unchanged as Agent Engine's `user_id`. | `data-user-id="GLOBAL_STABLE_USER_ID"` |
+| `data-environment` | Product context sent as `environment_id` and stored as session `product_id`. Supported values: `dam`, `eponymos`, `media_center`. Defaults to `dam`. | `data-environment="eponymos"` |
+| `data-api-url` | Optional chat API endpoint override. Normally omitted; the deployed widget bundle has its API URL configured. | `data-api-url="https://api.example.com/api/chat"` |
